@@ -61,6 +61,7 @@ interface PreceptorDashboardProps {
   onJoinEvent: (eventId: string, userId: number) => void;
   studentRepClaims: StudentRepClaim[];
   onAddStudentRepClaim: (claim: Omit<StudentRepClaim, 'id' | 'authorId' | 'timestamp' | 'status'>) => void;
+  onAddStudent: (student: Omit<User, 'id'>) => Promise<void>;
 }
 
 const TimeAgo: React.FC<{ date: string }> = ({ date }) => {
@@ -717,7 +718,149 @@ const AIInsightsView: React.FC<{ students: User[]; allStudents: User[]; records:
   );
 };
 
-const StudentProgressView: React.FC<{ students: User[]; records: AttendanceRecord[]; year: number; onOpenChat: (student: User) => void; onViewProfile: (student: User) => void; onConfigureStudent: (student: User) => void; }> = ({ students, records, year, onOpenChat, onViewProfile, onConfigureStudent }) => {
+const AddStudentModal: React.FC<{
+    onClose: () => void;
+    onAdd: (student: Omit<User, 'id'>) => Promise<void>;
+    careerId: string;
+}> = ({ onClose, onAdd, careerId }) => {
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [year, setYear] = useState(1);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        
+        if (!name.trim() || !email.trim() || !password.trim()) {
+            setError('Por favor, complete todos los campos');
+            return;
+        }
+
+        if (password.length < 3) {
+            setError('La contraseña debe tener al menos 3 caracteres');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await onAdd({
+                name: name.trim(),
+                email: email.trim().toLowerCase(),
+                password,
+                role: Role.STUDENT,
+                careerId,
+                year
+            });
+            onClose();
+        } catch (err: any) {
+            setError(err.message || 'Error al crear el estudiante');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in">
+            <div className="glass-card p-6 max-w-md w-full animate-fade-in-up">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-[--color-text-primary]">Agregar Nuevo Estudiante</h2>
+                    <button onClick={onClose} className="text-[--color-text-secondary] hover:text-[--color-text-primary] transition-colors">
+                        <XCircleIcon className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-[--color-text-secondary] mb-1">Nombre Completo</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="input-styled w-full"
+                            placeholder="Ej: Juan Pérez"
+                            required
+                        />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-[--color-text-secondary] mb-1">Email</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="input-styled w-full"
+                            placeholder="juan.perez@ejemplo.com"
+                            required
+                        />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-[--color-text-secondary] mb-1">Contraseña</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="input-styled w-full"
+                            placeholder="Mínimo 3 caracteres"
+                            required
+                            minLength={3}
+                        />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-[--color-text-secondary] mb-1">Año</label>
+                        <select
+                            value={year}
+                            onChange={(e) => setYear(Number(e.target.value))}
+                            className="input-styled w-full"
+                        >
+                            <option value={1}>1° Año</option>
+                            <option value={2}>2° Año</option>
+                            <option value={3}>3° Año</option>
+                        </select>
+                    </div>
+                    
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-sm">
+                            {error}
+                        </div>
+                    )}
+                    
+                    <div className="flex gap-3 justify-end">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="btn btn-secondary"
+                            disabled={loading}
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={loading}
+                        >
+                            {loading ? 'Creando...' : 'Crear Estudiante'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const StudentProgressView: React.FC<{ 
+    students: User[]; 
+    records: AttendanceRecord[]; 
+    year: number; 
+    onOpenChat: (student: User) => void; 
+    onViewProfile: (student: User) => void; 
+    onConfigureStudent: (student: User) => void;
+    onAddStudent: () => void;
+}> = ({ students, records, year, onOpenChat, onViewProfile, onConfigureStudent, onAddStudent }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const studentStats = useMemo(() => students.map(student => {
         const studentRecords = records.filter(r => r.studentId === student.id), total = studentRecords.length;
@@ -730,9 +873,18 @@ const StudentProgressView: React.FC<{ students: User[]; records: AttendanceRecor
         <div className="glass-card p-6 animate-fade-in-up">
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
                 <h2 className="text-xl font-semibold text-[--color-text-primary]">Progreso de Alumnos - {year}° Año</h2>
-                <div className="relative">
-                    <input type="text" placeholder="Buscar alumno..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full sm:w-64 input-styled pl-8" />
-                    <svg className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <div className="flex gap-3 flex-wrap">
+                    <div className="relative">
+                        <input type="text" placeholder="Buscar alumno..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full sm:w-64 input-styled pl-8" />
+                        <svg className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                    <button 
+                        onClick={onAddStudent}
+                        className="btn btn-primary flex items-center gap-2"
+                    >
+                        <PlusCircleIcon className="w-5 h-5" />
+                        <span>Agregar Alumno</span>
+                    </button>
                 </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1050,12 +1202,13 @@ const OpcionesView: React.FC<{
 };
 
 export const PreceptorDashboard: React.FC<PreceptorDashboardProps> = (props) => {
-  const { user, onLogout, allUsers, userProfiles, onUpdateProfile, userNotes, onUpdateNotes, theme, setTheme, borderStyle, setBorderStyle, fontStyle, setFontStyle, students, attendanceRecords, addAttendanceRecord, subjects, newsItems, addNewsItem, deleteNewsItem, resolveJustificationRequest, privateMessages, notifications, sendPrivateMessage, markMessagesAsRead, markNotificationsAsRead, updateAttendanceStatus, onCreateQRSession, forumThreads, forumReplies, onUpdateForumThreadStatus, onAddForumReply, onDeleteForumThread, onDeleteForumReply, onEditThread, onToggleLockThread, classSchedule, customEvents, onAddEvent, addNotification, studentRepThreads, studentRepReplies, onUpdateStudentRepReplies, studentRepEvents, eventParticipants, onJoinEvent, studentRepClaims, onAddStudentRepClaim } = props;
+  const { user, onLogout, allUsers, userProfiles, onUpdateProfile, userNotes, onUpdateNotes, theme, setTheme, borderStyle, setBorderStyle, fontStyle, setFontStyle, students, attendanceRecords, addAttendanceRecord, subjects, newsItems, addNewsItem, deleteNewsItem, resolveJustificationRequest, privateMessages, notifications, sendPrivateMessage, markMessagesAsRead, markNotificationsAsRead, updateAttendanceStatus, onCreateQRSession, forumThreads, forumReplies, onUpdateForumThreadStatus, onAddForumReply, onDeleteForumThread, onDeleteForumReply, onEditThread, onToggleLockThread, classSchedule, customEvents, onAddEvent, addNotification, studentRepThreads, studentRepReplies, onUpdateStudentRepReplies, studentRepEvents, eventParticipants, onJoinEvent, studentRepClaims, onAddStudentRepClaim, onAddStudent } = props;
   
   const [activeView, setActiveView] = useState('overview');
   const [viewingProfile, setViewingProfile] = useState<User | null>(null);
   const [forumsKey, setForumsKey] = useState(Date.now());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const [selectedYear, setSelectedYear] = useState(Array.isArray(user.year) ? user.year[0] : user.year);
@@ -1292,7 +1445,15 @@ export const PreceptorDashboard: React.FC<PreceptorDashboardProps> = (props) => 
         case 'progress': return (
             <div className="animate-fade-in">
                 <div className="mb-6 glass-card p-4 flex flex-wrap items-center gap-6"><div className="flex items-center gap-2"><label htmlFor="year-select-progress" className="font-semibold text-[--color-text-primary]">Año:</label><select id="year-select-progress" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="input-styled">{[1, 2, 3].map(year => <option key={year} value={year}>{year}° Año</option>)}</select></div></div>
-                <StudentProgressView students={relevantStudents} records={attendanceRecords} year={selectedYear as number} onOpenChat={setChattingWith} onViewProfile={setViewingProfile} onConfigureStudent={setConfiguringStudent} />
+                <StudentProgressView 
+                    students={relevantStudents} 
+                    records={attendanceRecords} 
+                    year={selectedYear as number} 
+                    onOpenChat={setChattingWith} 
+                    onViewProfile={setViewingProfile} 
+                    onConfigureStudent={setConfiguringStudent}
+                    onAddStudent={() => setShowAddStudentModal(true)}
+                />
             </div>
         );
         case 'justifications': return <div className="animate-fade-in"><JustificationManager students={students} records={attendanceRecords} subjects={subjects} onResolve={resolveJustificationRequest} /></div>;
@@ -1405,6 +1566,13 @@ export const PreceptorDashboard: React.FC<PreceptorDashboardProps> = (props) => 
             onUpdateProfile(configuringStudent.id, updatedProfile);
             setConfiguringStudent(null);
           }}
+        />
+      )}
+      {showAddStudentModal && user.careerId && (
+        <AddStudentModal
+          onClose={() => setShowAddStudentModal(false)}
+          onAdd={onAddStudent}
+          careerId={user.careerId}
         />
       )}
     </>

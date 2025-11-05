@@ -55,6 +55,7 @@ export const App: React.FC = () => {
         eventParticipants,
         setEventParticipants,
         loadNotifications,
+        refreshUsers,
         refreshAttendance,
         refreshNews,
         refreshMessages,
@@ -370,6 +371,16 @@ export const App: React.FC = () => {
                 {...dashboardProps}
                 students={users.filter(u => u.role === Role.STUDENT)}
                 attendanceRecords={attendanceRecords}
+                onAddStudent={async (student) => {
+                    try {
+                        const newStudent = await supabaseServices.createUser(student);
+                        setUsers(prev => [...prev, newStudent]);
+                        refreshUsers();
+                    } catch (error) {
+                        console.error('Error creating student:', error);
+                        throw error;
+                    }
+                }}
                 addAttendanceRecord={async (updates, date, subjectId, actorRole) => {
                     try {
                         const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
