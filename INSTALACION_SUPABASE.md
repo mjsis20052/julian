@@ -165,9 +165,33 @@ Ver `supabase/schema.sql` para la estructura completa.
 1. ✅ Crear tablas en Supabase
 2. ✅ Configurar variables de entorno
 3. ⬜ Configurar políticas RLS
-4. ⬜ Migrar datos iniciales (opcional)
-5. ⬜ Actualizar `App.tsx` para usar Supabase en lugar de estado local
-6. ⬜ Implementar autenticación con Supabase Auth
+4. ⬜ Probar conexión con Supabase
+5. ⬜ Migrar datos iniciales (opcional)
+6. ⬜ Actualizar `App.tsx` para usar Supabase en lugar de estado local
+7. ⬜ Implementar autenticación con Supabase Auth
+
+## Scripts Útiles
+
+### Probar Conexión
+
+Para verificar que la conexión con Supabase funciona correctamente:
+
+```bash
+npm run test:supabase
+```
+
+Este script verifica que todas las tablas principales estén creadas y accesibles.
+
+### Migrar Datos Iniciales
+
+Para migrar los datos de ejemplo desde `constants.ts` a Supabase:
+
+```bash
+npm run migrate:data
+```
+
+**⚠️ Advertencia**: Este script migra usuarios con contraseñas en texto plano. 
+Solo úsalo para desarrollo. En producción, implementa Supabase Auth.
 
 ## Notas Importantes
 
