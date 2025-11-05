@@ -173,23 +173,44 @@ ON CONFLICT (subject_id, day_of_week, start_time) DO UPDATE SET
     classroom = EXCLUDED.classroom;
 
 -- ============================================
--- VERIFICACIÓN
+-- VERIFICACIÓN (Ejecutar después de las inserciones)
 -- ============================================
 
 -- Verificar que las carreras se insertaron correctamente
-SELECT 'Carreras insertadas:' as info, COUNT(*) as total FROM careers;
+DO $$
+DECLARE
+    career_count INTEGER;
+    subject_count INTEGER;
+    schedule_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO career_count FROM careers;
+    SELECT COUNT(*) INTO subject_count FROM subjects;
+    SELECT COUNT(*) INTO schedule_count FROM class_schedules;
+    
+    RAISE NOTICE '✅ Carreras insertadas: %', career_count;
+    RAISE NOTICE '✅ Materias insertadas: %', subject_count;
+    RAISE NOTICE '✅ Horarios insertados: %', schedule_count;
+    
+    IF career_count >= 2 AND subject_count >= 18 THEN
+        RAISE NOTICE '✅ ¡Datos insertados correctamente!';
+    ELSE
+        RAISE WARNING '⚠️  Algunos datos pueden faltar. Verifica manualmente.';
+    END IF;
+END $$;
 
--- Verificar que las materias se insertaron correctamente
-SELECT 'Materias insertadas:' as info, COUNT(*) as total FROM subjects;
-
--- Verificar que los horarios se insertaron correctamente
-SELECT 'Horarios insertados:' as info, COUNT(*) as total FROM class_schedules;
-
--- Mostrar las carreras
-SELECT id, name, years, theme FROM careers ORDER BY id;
-
--- Mostrar las materias por carrera
+-- Mostrar las carreras (para verificación visual)
 SELECT 
+    'CARRERAS' as tipo,
+    id, 
+    name, 
+    years::text as años,
+    theme 
+FROM careers 
+ORDER BY id;
+
+-- Mostrar las materias por carrera (para verificación visual)
+SELECT 
+    'MATERIAS' as tipo,
     c.name as carrera,
     s.year as año,
     s.name as materia
