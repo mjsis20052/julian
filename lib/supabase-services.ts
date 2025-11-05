@@ -18,19 +18,41 @@ export async function getUsers(): Promise<User[]> {
   
   if (error) throw error;
   
-  return data.map(u => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    password: u.password,
-    role: u.role as any,
-    careerId: u.career_id || undefined,
-    year: u.year || undefined,
-    assignedSubjects: u.assigned_subjects || undefined
-  }));
+  return data.map(u => {
+    // Convertir el array de year al formato del tipo User
+    let yearValue: number | number[] | undefined = undefined;
+    if (u.year) {
+      if (Array.isArray(u.year) && u.year.length === 1) {
+        yearValue = u.year[0];
+      } else if (Array.isArray(u.year)) {
+        yearValue = u.year;
+      }
+    }
+    
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      password: u.password,
+      role: u.role as any,
+      careerId: u.career_id || undefined,
+      year: yearValue,
+      assignedSubjects: u.assigned_subjects || undefined
+    };
+  });
 }
 
 export async function createUser(user: Omit<User, 'id'>): Promise<User> {
+  // Convertir year a array si es necesario (la BD espera INTEGER[])
+  let yearArray: number[] | null = null;
+  if (user.year) {
+    if (Array.isArray(user.year)) {
+      yearArray = user.year;
+    } else {
+      yearArray = [user.year];
+    }
+  }
+  
   const { data, error } = await supabase
     .from('users')
     .insert({
@@ -39,13 +61,23 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
       password: user.password,
       role: user.role,
       career_id: user.careerId || null,
-      year: user.year || null,
+      year: yearArray,
       assigned_subjects: user.assignedSubjects || null
     })
     .select()
     .single();
   
   if (error) throw error;
+  
+  // Convertir el array de vuelta al formato del tipo User
+  let yearValue: number | number[] | undefined = undefined;
+  if (data.year) {
+    if (Array.isArray(data.year) && data.year.length === 1) {
+      yearValue = data.year[0];
+    } else if (Array.isArray(data.year)) {
+      yearValue = data.year;
+    }
+  }
   
   return {
     id: data.id,
@@ -54,7 +86,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
     password: data.password,
     role: data.role as any,
     careerId: data.career_id || undefined,
-    year: data.year || undefined,
+    year: yearValue,
     assignedSubjects: data.assigned_subjects || undefined
   };
 }
