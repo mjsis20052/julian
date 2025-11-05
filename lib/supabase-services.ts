@@ -53,6 +53,19 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
     }
   }
   
+  // Validar que career_id existe si se proporciona
+  if (user.careerId) {
+    const { data: career, error: careerError } = await supabase
+      .from('careers')
+      .select('id')
+      .eq('id', user.careerId)
+      .single();
+    
+    if (careerError || !career) {
+      throw new Error(`La carrera con ID "${user.careerId}" no existe en la base de datos. Por favor, ejecuta el script seed-data.sql primero.`);
+    }
+  }
+  
   const { data, error } = await supabase
     .from('users')
     .insert({
@@ -67,7 +80,15 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
     .select()
     .single();
   
-  if (error) throw error;
+  if (error) {
+    // Mejorar mensaje de error para foreign key constraint
+    if (error.code === '23503') {
+      if (error.message.includes('career_id')) {
+        throw new Error(`La carrera "${user.careerId}" no existe. Por favor, ejecuta el script seed-data.sql en Supabase para crear las carreras.`);
+      }
+    }
+    throw error;
+  }
   
   // Convertir el array de vuelta al formato del tipo User
   let yearValue: number | number[] | undefined = undefined;
