@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Role, User, AttendanceRecord, Subject, NewsItem, PrivateMessage, AttendanceStatus, JustificationFile, Notification, NotificationType, UserProfileData, Note, ForumThread, ForumReply, ForumThreadStatus, QRAttendanceSession, Coordinates, ClassSchedule, Grade, GradeType, CalendarEvent, Planificacion, Material, DailyTask, MaintenanceHistoryItem, Installation, Incident, StudentRepEvent, StudentRepForumThread, StudentRepForumReply, StudentRepAnnouncement, StudentRepClaim } from './types';
-import { CAREERS, INITIAL_USERS, INITIAL_ATTENDANCE, SUBJECTS, NEWS_ITEMS, INITIAL_PRIVATE_MESSAGES, INITIAL_FORUM_THREADS, INITIAL_FORUM_REPLIES, ABSENCE_LIMIT, MINIMUM_PRESENTISM, CLASS_COUNT_THRESHOLD_FOR_LIBRE, CLASS_SCHEDULE, INITIAL_NOTIFICATIONS, INITIAL_GRADES, INITIAL_PLANIFICACIONES, INITIAL_MATERIAL_DIDACTICO, INITIAL_DAILY_TASKS, INITIAL_MAINTENANCE_HISTORY, INITIAL_INSTALLATIONS, INITIAL_INCIDENTS, INITIAL_STUDENT_REP_EVENTS, INITIAL_STUDENT_REP_THREADS, INITIAL_STUDENT_REP_REPLIES, INITIAL_STUDENT_REP_ANNOUNCEMENTS, INITIAL_STUDENT_REP_CLAIMS } from './constants';
+import { CAREERS, SUBJECTS, ABSENCE_LIMIT, MINIMUM_PRESENTISM, CLASS_COUNT_THRESHOLD_FOR_LIBRE, CLASS_SCHEDULE, INITIAL_PLANIFICACIONES, INITIAL_MATERIAL_DIDACTICO, INITIAL_DAILY_TASKS, INITIAL_MAINTENANCE_HISTORY, INITIAL_INSTALLATIONS, INITIAL_INCIDENTS, INITIAL_STUDENT_REP_THREADS, INITIAL_STUDENT_REP_REPLIES, INITIAL_STUDENT_REP_ANNOUNCEMENTS, INITIAL_STUDENT_REP_CLAIMS } from './constants';
 import { AuthForm } from './components/AuthForm';
 import { StudentDashboard } from './components/StudentDashboard';
 import { PreceptorDashboard } from './components/PreceptorDashboard';
@@ -8,6 +8,8 @@ import { TeacherDashboard } from './components/TeacherDashboard';
 import { StaffDashboard } from './components/StaffDashboard';
 import { StudentRepDashboard } from './components/StudentRepDashboard';
 import InteractiveConstellation from './components/InteractiveConstellation';
+import { useSupabaseData } from './hooks/useSupabaseData';
+import * as supabaseServices from './lib/supabase-services';
 
 export type Theme = 'celestial' | 'oscuro' | 'ensoñacion' | 'moderno' | 'fantasma' | 'rebelde';
 export type BorderStyle = 'sencillo' | 'refinado' | 'gradiente' | 'neon' | 'acentuado' | 'doble';
@@ -25,25 +27,52 @@ export const THEMES: Record<Theme, { name: string; accent: string; colors: { bg:
 
 export const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-    const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE);
-    const [newsItems, setNewsItems] = useState<NewsItem[]>(NEWS_ITEMS);
-    const [privateMessages, setPrivateMessages] = useState<PrivateMessage[]>(INITIAL_PRIVATE_MESSAGES);
-    const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
-    const [grades, setGrades] = useState<Grade[]>(INITIAL_GRADES);
-    const [forumThreads, setForumThreads] = useState<ForumThread[]>(INITIAL_FORUM_THREADS);
-    const [forumReplies, setForumReplies] = useState<ForumReply[]>(INITIAL_FORUM_REPLIES);
+    
+    // Usar hook de Supabase para cargar datos
+    const {
+        loading: dataLoading,
+        error: dataError,
+        users,
+        setUsers,
+        attendanceRecords,
+        setAttendanceRecords,
+        grades,
+        setGrades,
+        newsItems,
+        setNewsItems,
+        privateMessages,
+        setPrivateMessages,
+        notifications,
+        setNotifications,
+        forumThreads,
+        setForumThreads,
+        forumReplies,
+        setForumReplies,
+        calendarEvents: customEvents,
+        setCalendarEvents: setCustomEvents,
+        studentRepEvents,
+        setStudentRepEvents,
+        eventParticipants,
+        setEventParticipants,
+        loadNotifications,
+        refreshAttendance,
+        refreshNews,
+        refreshMessages,
+        refreshForumThreads,
+        refreshForumReplies,
+        refreshCalendarEvents,
+        refreshStudentRepEvents
+    } = useSupabaseData();
+    
+    // Estados locales (aún no migrados a Supabase o datos que no requieren persistencia)
     const [userProfiles, setUserProfiles] = useState<Record<number, UserProfileData>>({});
     const [userNotes, setUserNotes] = useState<Record<number, Note[]>>({});
-    const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
     const [planificaciones, setPlanificaciones] = useState<Planificacion[]>(INITIAL_PLANIFICACIONES);
     const [materials, setMaterials] = useState<Material[]>(INITIAL_MATERIAL_DIDACTICO);
     const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(INITIAL_DAILY_TASKS);
     const [maintenanceHistory, setMaintenanceHistory] = useState<MaintenanceHistoryItem[]>(INITIAL_MAINTENANCE_HISTORY);
     const [installations, setInstallations] = useState<Installation[]>(INITIAL_INSTALLATIONS);
     const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
-    const [studentRepEvents, setStudentRepEvents] = useState<StudentRepEvent[]>(INITIAL_STUDENT_REP_EVENTS);
-    const [eventParticipants, setEventParticipants] = useState<Record<string, number[]>>({});
     const [studentRepThreads, setStudentRepThreads] = useState<StudentRepForumThread[]>(INITIAL_STUDENT_REP_THREADS);
     const [studentRepReplies, setStudentRepReplies] = useState<StudentRepForumReply[]>(INITIAL_STUDENT_REP_REPLIES);
     const [studentRepAnnouncements, setStudentRepAnnouncements] = useState<StudentRepAnnouncement[]>(INITIAL_STUDENT_REP_ANNOUNCEMENTS);
@@ -59,32 +88,81 @@ export const App: React.FC = () => {
         document.documentElement.setAttribute('data-font-style', fontStyle);
     }, [theme, borderStyle, fontStyle]);
 
-    // Simple handler functions to be passed as props
-    const handleLogin = (user: User) => setCurrentUser(user);
-    const handleRegister = (user: User) => { setUsers(prev => [...prev, user]); setCurrentUser(user); };
-    const handleLogout = () => setCurrentUser(null);
-    const handleUpdateProfile = (userId: number, data: UserProfileData) => setUserProfiles(prev => ({ ...prev, [userId]: data }));
+    // Cargar notificaciones cuando el usuario cambia
+    useEffect(() => {
+        if (currentUser) {
+            loadNotifications(currentUser.id);
+        }
+    }, [currentUser, loadNotifications]);
+
+    // Handler functions actualizadas para usar Supabase
+    const handleLogin = (user: User) => {
+        setCurrentUser(user);
+        loadNotifications(user.id);
+    };
+    
+    const handleRegister = async (user: User) => {
+        try {
+            const newUser = await supabaseServices.createUser(user);
+            setUsers(prev => [...prev, newUser]);
+            setCurrentUser(newUser);
+            loadNotifications(newUser.id);
+        } catch (error) {
+            console.error('Error registering user:', error);
+        }
+    };
+    
+    const handleLogout = () => {
+        setCurrentUser(null);
+        setNotifications([]);
+    };
+    
+    const handleUpdateProfile = (userId: number, data: UserProfileData) => {
+        setUserProfiles(prev => ({ ...prev, [userId]: data }));
+    };
+    
     const handleUpdateNotes = (notes: Note[]) => {
-      if (currentUser) {
-        setUserNotes(prev => ({...prev, [currentUser.id]: notes}));
-      }
+        if (currentUser) {
+            setUserNotes(prev => ({...prev, [currentUser.id]: notes}));
+        }
     };
-    const handleAddNotification = (notificationData: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
-        const newNotification: Notification = {
-            ...notificationData,
-            id: `notif-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            read: false,
-        };
-        setNotifications(prev => [newNotification, ...prev]);
+    
+    const handleAddNotification = async (notificationData: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+        try {
+            const newNotification = await supabaseServices.createNotification(notificationData);
+            setNotifications(prev => [newNotification, ...prev]);
+        } catch (error) {
+            console.error('Error creating notification:', error);
+            // Fallback local si falla Supabase
+            const fallbackNotification: Notification = {
+                ...notificationData,
+                id: `notif-${Date.now()}`,
+                timestamp: new Date().toISOString(),
+                read: false,
+            };
+            setNotifications(prev => [fallbackNotification, ...prev]);
+        }
     };
-    const handleAddEvent = (event: Omit<CalendarEvent, 'id'>) => {
-      setCustomEvents(prev => [...prev, {...event, id: `custom-${Date.now()}`}]);
-    }
-    const handleJoinEvent = (eventId: string, userId: number) => {
-        setEventParticipants(prev => {
-            const currentParticipants = prev[eventId] || [];
+    
+    const handleAddEvent = async (event: Omit<CalendarEvent, 'id'>) => {
+        try {
+            const newEvent = await supabaseServices.createCalendarEvent(event);
+            setCustomEvents(prev => [...prev, newEvent]);
+            refreshCalendarEvents();
+        } catch (error) {
+            console.error('Error creating event:', error);
+            // Fallback local
+            setCustomEvents(prev => [...prev, {...event, id: `custom-${Date.now()}`}]);
+        }
+    };
+    
+    const handleJoinEvent = async (eventId: string, userId: number) => {
+        try {
+            await supabaseServices.joinEvent(eventId, userId);
+            const currentParticipants = eventParticipants[eventId] || [];
             if (!currentParticipants.includes(userId)) {
+                setEventParticipants(prev => ({ ...prev, [eventId]: [...currentParticipants, userId] }));
+                
                 // ADD NOTIFICATION TO STUDENT REPS
                 const studentReps = users.filter(u => u.role === Role.STUDENT_REP);
                 const event = studentRepEvents.find(e => e.id === eventId);
@@ -96,17 +174,18 @@ export const App: React.FC = () => {
                             type: NotificationType.NEW_EVENT_PARTICIPANT,
                             text: `${student.name} se unió a un evento`,
                             details: `Nuevo participante en: "${event.title}"`
-                        })
-                    })
+                        });
+                    });
                 }
-                return { ...prev, [eventId]: [...currentParticipants, userId] };
             }
-            return prev;
-        });
-    }
+        } catch (error) {
+            console.error('Error joining event:', error);
+        }
+    };
 
-    const handleAddStudentRepClaim = (claimData: Omit<StudentRepClaim, 'id' | 'authorId' | 'timestamp' | 'status'>) => {
+    const handleAddStudentRepClaim = async (claimData: Omit<StudentRepClaim, 'id' | 'authorId' | 'timestamp' | 'status'>) => {
         if (!currentUser) return;
+        
         const newClaim: StudentRepClaim = {
             ...claimData,
             id: `src-${Date.now()}`,
@@ -121,10 +200,10 @@ export const App: React.FC = () => {
         studentReps.forEach(rep => {
             handleAddNotification({
                 userId: rep.id,
-                type: NotificationType.ANNOUNCEMENT, // Using a generic one for now
+                type: NotificationType.ANNOUNCEMENT,
                 text: 'Nuevo reclamo/sugerencia recibido',
                 details: `Categoría: ${newClaim.category}`
-            })
+            });
         });
     };
 
@@ -149,8 +228,15 @@ export const App: React.FC = () => {
         borderStyle, setBorderStyle,
         fontStyle, setFontStyle,
         notifications,
-        markNotificationsAsRead: (userId: number) => {
-            setNotifications(prev => prev.map(n => n.userId === userId ? {...n, read: true} : n));
+        markNotificationsAsRead: async (userId: number) => {
+            try {
+                await supabaseServices.markNotificationsAsRead(userId);
+                setNotifications(prev => prev.map(n => n.userId === userId ? {...n, read: true} : n));
+            } catch (error) {
+                console.error('Error marking notifications as read:', error);
+                // Fallback local
+                setNotifications(prev => prev.map(n => n.userId === userId ? {...n, read: true} : n));
+            }
         },
         addNotification: handleAddNotification,
     };
@@ -165,20 +251,106 @@ export const App: React.FC = () => {
                 grades={grades}
                 newsItems={newsItems}
                 privateMessages={privateMessages}
-                sendPrivateMessage={(senderId, receiverId, text) => setPrivateMessages(p => [...p, {id: `msg-${Date.now()}`, senderId, receiverId, text, timestamp: new Date().toISOString(), read: false}])}
-                markMessagesAsRead={(readerId, chatterId) => setPrivateMessages(p => p.map(m => (m.receiverId === readerId && m.senderId === chatterId ? {...m, read: true} : m)))}
-                requestJustification={(recordId, reason, file) => {
-                    setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: AttendanceStatus.PENDING_JUSTIFICATION, justificationReason: reason, justificationFile: file} : r));
+                sendPrivateMessage={async (senderId, receiverId, text) => {
+                    try {
+                        const newMessage = await supabaseServices.createPrivateMessage({ senderId, receiverId, text });
+                        setPrivateMessages(p => [newMessage, ...p]);
+                        refreshMessages();
+                    } catch (error) {
+                        console.error('Error sending message:', error);
+                        // Fallback local
+                        setPrivateMessages(p => [...p, {id: `msg-${Date.now()}`, senderId, receiverId, text, timestamp: new Date().toISOString(), read: false}]);
+                    }
+                }}
+                markMessagesAsRead={async (readerId, chatterId) => {
+                    try {
+                        await supabaseServices.markMessagesAsRead(readerId, chatterId);
+                        setPrivateMessages(p => p.map(m => (m.receiverId === readerId && m.senderId === chatterId ? {...m, read: true} : m)));
+                    } catch (error) {
+                        console.error('Error marking messages as read:', error);
+                        setPrivateMessages(p => p.map(m => (m.receiverId === readerId && m.senderId === chatterId ? {...m, read: true} : m)));
+                    }
+                }}
+                requestJustification={async (recordId, reason, file) => {
+                    try {
+                        await supabaseServices.updateAttendanceRecord(recordId, {
+                            status: AttendanceStatus.PENDING_JUSTIFICATION,
+                            justificationReason: reason,
+                            justificationFile: file
+                        });
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: AttendanceStatus.PENDING_JUSTIFICATION, justificationReason: reason, justificationFile: file} : r));
+                        refreshAttendance();
+                    } catch (error) {
+                        console.error('Error requesting justification:', error);
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: AttendanceStatus.PENDING_JUSTIFICATION, justificationReason: reason, justificationFile: file} : r));
+                    }
                 }}
                 onVerifyQRAttendance={async () => "Not implemented yet"}
                 forumThreads={forumThreads}
                 forumReplies={forumReplies}
-                onAddForumThread={(thread) => setForumThreads(prev => [{...thread, id: `thread-${Date.now()}`, timestamp: new Date().toISOString(), status: ForumThreadStatus.PENDING}, ...prev])}
-                onAddForumReply={(reply) => setForumReplies(prev => [{...reply, id: `reply-${Date.now()}`, timestamp: new Date().toISOString()}, ...prev])}
-                onEditForumThread={(threadId, title, content) => setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, title, content, status: ForumThreadStatus.PENDING} : t))}
-                onDeleteForumThread={(threadId) => setForumThreads(prev => prev.filter(t => t.id !== threadId))}
-                onDeleteForumReply={(replyId) => setForumReplies(prev => prev.filter(r => r.id !== replyId))}
-                onToggleLockThread={(threadId) => setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, isLocked: !t.isLocked} : t))}
+                onAddForumThread={async (thread) => {
+                    try {
+                        const newThread = await supabaseServices.createForumThread(thread);
+                        setForumThreads(prev => [newThread, ...prev]);
+                        refreshForumThreads();
+                    } catch (error) {
+                        console.error('Error creating forum thread:', error);
+                        setForumThreads(prev => [{...thread, id: `thread-${Date.now()}`, timestamp: new Date().toISOString(), status: ForumThreadStatus.PENDING}, ...prev]);
+                    }
+                }}
+                onAddForumReply={async (reply) => {
+                    try {
+                        const newReply = await supabaseServices.createForumReply(reply);
+                        setForumReplies(prev => [...prev, newReply]);
+                        refreshForumReplies();
+                    } catch (error) {
+                        console.error('Error creating forum reply:', error);
+                        setForumReplies(prev => [...prev, {...reply, id: `reply-${Date.now()}`, timestamp: new Date().toISOString()}]);
+                    }
+                }}
+                onEditForumThread={async (threadId, title, content) => {
+                    try {
+                        await supabaseServices.updateForumThread(threadId, { title, content, status: ForumThreadStatus.PENDING });
+                        setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, title, content, status: ForumThreadStatus.PENDING} : t));
+                        refreshForumThreads();
+                    } catch (error) {
+                        console.error('Error updating forum thread:', error);
+                        setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, title, content, status: ForumThreadStatus.PENDING} : t));
+                    }
+                }}
+                onDeleteForumThread={async (threadId) => {
+                    try {
+                        await supabaseServices.deleteForumThread(threadId);
+                        setForumThreads(prev => prev.filter(t => t.id !== threadId));
+                        refreshForumThreads();
+                    } catch (error) {
+                        console.error('Error deleting forum thread:', error);
+                        setForumThreads(prev => prev.filter(t => t.id !== threadId));
+                    }
+                }}
+                onDeleteForumReply={async (replyId) => {
+                    try {
+                        await supabaseServices.deleteForumReply(replyId);
+                        setForumReplies(prev => prev.filter(r => r.id !== replyId));
+                        refreshForumReplies();
+                    } catch (error) {
+                        console.error('Error deleting forum reply:', error);
+                        setForumReplies(prev => prev.filter(r => r.id !== replyId));
+                    }
+                }}
+                onToggleLockThread={async (threadId) => {
+                    try {
+                        const thread = forumThreads.find(t => t.id === threadId);
+                        if (thread) {
+                            await supabaseServices.updateForumThread(threadId, { isLocked: !thread.isLocked });
+                            setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, isLocked: !t.isLocked} : t));
+                            refreshForumThreads();
+                        }
+                    } catch (error) {
+                        console.error('Error toggling thread lock:', error);
+                        setForumThreads(prev => prev.map(t => t.id === threadId ? {...t, isLocked: !t.isLocked} : t));
+                    }
+                }}
                 classSchedule={CLASS_SCHEDULE}
                 customEvents={customEvents}
                 onAddEvent={handleAddEvent}
@@ -198,16 +370,67 @@ export const App: React.FC = () => {
                 {...dashboardProps}
                 students={users.filter(u => u.role === Role.STUDENT)}
                 attendanceRecords={attendanceRecords}
-                addAttendanceRecord={(updates, date, subjectId, actorRole) => {
-                    const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
-                    setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                addAttendanceRecord={async (updates, date, subjectId, actorRole) => {
+                    try {
+                        const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
+                        // Crear registros en Supabase
+                        for (const record of newRecords) {
+                            await supabaseServices.createAttendanceRecord(record);
+                        }
+                        setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                        refreshAttendance();
+                    } catch (error) {
+                        console.error('Error adding attendance records:', error);
+                        const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
+                        setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                    }
                 }}
-                updateAttendanceStatus={(recordId, newStatus) => setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: newStatus} : r))}
-                resolveJustificationRequest={(recordId, approved) => setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: approved ? AttendanceStatus.JUSTIFIED : AttendanceStatus.ABSENT, justificationReason: undefined, justificationFile: undefined} : r))}
+                updateAttendanceStatus={async (recordId, newStatus) => {
+                    try {
+                        await supabaseServices.updateAttendanceRecord(recordId, { status: newStatus });
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: newStatus} : r));
+                        refreshAttendance();
+                    } catch (error) {
+                        console.error('Error updating attendance status:', error);
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: newStatus} : r));
+                    }
+                }}
+                resolveJustificationRequest={async (recordId, approved) => {
+                    try {
+                        await supabaseServices.updateAttendanceRecord(recordId, {
+                            status: approved ? AttendanceStatus.JUSTIFIED : AttendanceStatus.ABSENT,
+                            justificationReason: undefined,
+                            justificationFile: undefined
+                        });
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: approved ? AttendanceStatus.JUSTIFIED : AttendanceStatus.ABSENT, justificationReason: undefined, justificationFile: undefined} : r));
+                        refreshAttendance();
+                    } catch (error) {
+                        console.error('Error resolving justification:', error);
+                        setAttendanceRecords(prev => prev.map(r => r.id === recordId ? {...r, status: approved ? AttendanceStatus.JUSTIFIED : AttendanceStatus.ABSENT, justificationReason: undefined, justificationFile: undefined} : r));
+                    }
+                }}
                 subjects={SUBJECTS}
                 newsItems={newsItems}
-                addNewsItem={(item) => setNewsItems(prev => [{...item, id: `news-${Date.now()}`}, ...prev])}
-                deleteNewsItem={(id) => setNewsItems(prev => prev.filter(item => item.id !== id))}
+                addNewsItem={async (item) => {
+                    try {
+                        const newItem = await supabaseServices.createNewsItem(item);
+                        setNewsItems(prev => [newItem, ...prev]);
+                        refreshNews();
+                    } catch (error) {
+                        console.error('Error creating news item:', error);
+                        setNewsItems(prev => [{...item, id: `news-${Date.now()}`}, ...prev]);
+                    }
+                }}
+                deleteNewsItem={async (id) => {
+                    try {
+                        await supabaseServices.deleteNewsItem(id);
+                        setNewsItems(prev => prev.filter(item => item.id !== id));
+                        refreshNews();
+                    } catch (error) {
+                        console.error('Error deleting news item:', error);
+                        setNewsItems(prev => prev.filter(item => item.id !== id));
+                    }
+                }}
                 privateMessages={privateMessages}
                 sendPrivateMessage={(senderId, receiverId, text) => setPrivateMessages(p => [...p, {id: `msg-${Date.now()}`, senderId, receiverId, text, timestamp: new Date().toISOString(), read: false}])}
                 markMessagesAsRead={(readerId, chatterId) => setPrivateMessages(p => p.map(m => (m.receiverId === readerId && m.senderId === chatterId ? {...m, read: true} : m)))}
@@ -238,26 +461,53 @@ export const App: React.FC = () => {
                 subjects={SUBJECTS}
                 students={users.filter(u => u.role === Role.STUDENT)}
                 attendanceRecords={attendanceRecords}
-                addAttendanceRecord={(updates, date, subjectId, actorRole) => {
-                    const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
-                    setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                addAttendanceRecord={async (updates, date, subjectId, actorRole) => {
+                    try {
+                        const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
+                        // Crear registros en Supabase
+                        for (const record of newRecords) {
+                            await supabaseServices.createAttendanceRecord(record);
+                        }
+                        setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                        refreshAttendance();
+                    } catch (error) {
+                        console.error('Error adding attendance records:', error);
+                        const newRecords = updates.map(u => ({ id: `att-${u.studentId}-${subjectId}-${date}`, studentId: u.studentId, subjectId, date, status: u.status }));
+                        setAttendanceRecords(prev => [...prev.filter(r => !(r.date === date && r.subjectId === subjectId && newRecords.some(nr => nr.studentId === r.studentId))), ...newRecords]);
+                    }
                 }}
                 grades={grades}
-                onUpdateGrades={(studentId, subjectId, newGrades) => {
-                  const otherGrades = grades.filter(g => g.studentId !== studentId || g.subjectId !== subjectId);
-                  const updatedGradesForStudent = newGrades.map(ng => ({
-                    id: `g-${studentId}-${ng.type}-${subjectId}`,
-                    studentId,
-                    subjectId,
-                    type: ng.type,
-                    value: ng.value
-                  }));
-                  setGrades([...otherGrades, ...updatedGradesForStudent]);
+                onUpdateGrades={async (studentId, subjectId, newGrades) => {
+                  try {
+                    const otherGrades = grades.filter(g => g.studentId !== studentId || g.subjectId !== subjectId);
+                    const updatedGradesForStudent = newGrades.map(ng => ({
+                      id: `g-${studentId}-${ng.type}-${subjectId}`,
+                      studentId,
+                      subjectId,
+                      type: ng.type,
+                      value: ng.value
+                    }));
+                    await supabaseServices.upsertGrades(updatedGradesForStudent);
+                    setGrades([...otherGrades, ...updatedGradesForStudent]);
+                  } catch (error) {
+                    console.error('Error updating grades:', error);
+                    const otherGrades = grades.filter(g => g.studentId !== studentId || g.subjectId !== subjectId);
+                    const updatedGradesForStudent = newGrades.map(ng => ({
+                      id: `g-${studentId}-${ng.type}-${subjectId}`,
+                      studentId,
+                      subjectId,
+                      type: ng.type,
+                      value: ng.value
+                    }));
+                    setGrades([...otherGrades, ...updatedGradesForStudent]);
+                  }
                 }}
                 newsItems={newsItems}
-                addNewsItem={(item) => {
-                    const newItem = { ...item, id: `news-${Date.now()}` };
-                    setNewsItems(prev => [newItem, ...prev]);
+                addNewsItem={async (item) => {
+                    try {
+                        const newItem = await supabaseServices.createNewsItem(item);
+                        setNewsItems(prev => [newItem, ...prev]);
+                        refreshNews();
 
                     const targetStudents = users.filter(student => {
                         if (student.role !== Role.STUDENT) return false;
@@ -270,14 +520,19 @@ export const App: React.FC = () => {
                         return true;
                     });
             
-                    targetStudents.forEach(student => {
-                        handleAddNotification({
-                            userId: student.id,
-                            type: NotificationType.NEW_ASSIGNMENT,
-                            text: `Nuevo comunicado en ${SUBJECTS.find(s => s.id === newItem.subjectId)?.name || 'Anuncios Generales'}`,
-                            details: newItem.text,
+                        targetStudents.forEach(student => {
+                            handleAddNotification({
+                                userId: student.id,
+                                type: NotificationType.NEW_ASSIGNMENT,
+                                text: `Nuevo comunicado en ${SUBJECTS.find(s => s.id === newItem.subjectId)?.name || 'Anuncios Generales'}`,
+                                details: newItem.text,
+                            });
                         });
-                    });
+                    } catch (error) {
+                        console.error('Error creating news item:', error);
+                        const fallbackItem = { ...item, id: `news-${Date.now()}` };
+                        setNewsItems(prev => [fallbackItem, ...prev]);
+                    }
                 }}
                 classSchedule={CLASS_SCHEDULE}
                 customEvents={customEvents}
