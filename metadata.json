@@ -1,0 +1,7 @@
+{
+  "name": "Copy of i26 app - 28/10 ",
+  "description": "Funcionalidades agregadas a Auxiliar 11/10\nImportante:\nMejorar el mapa del instituto\n\nPrueba de conexion 12/10\n\n13/10\nSe pudo linkear Alumno y C.Estudiantes con Eventos\n\n14/10\nSe pudo linkear Alumno,Preceptor y Profesor con C.Estudiantes en el apartado de Comunidad (Eventos,Foros y Reclamos)\n\n28/10\n\nSe elimina el panel directivo (Hecho)\nSe busca crear el panel administrador (Constantes fallos, queda seguir intentando)\nSe necesita conectar a una base de datos.\n",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
