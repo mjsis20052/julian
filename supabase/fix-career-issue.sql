@@ -80,9 +80,9 @@ WHERE role = 'Preceptor'
   AND (career_id IS NULL OR NOT EXISTS (SELECT 1 FROM careers WHERE id = career_id));
 
 -- Paso 8: Verificación final
-SELECT '========================================' as "";
-SELECT 'VERIFICACIÓN FINAL' as "";
-SELECT '========================================' as "";
+SELECT '========================================' as separador;
+SELECT 'VERIFICACIÓN FINAL' as titulo;
+SELECT '========================================' as separador;
 
 SELECT 
     'Carreras' as tabla,
