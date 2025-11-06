@@ -69,9 +69,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     date DATE NOT NULL,
     status VARCHAR(50) NOT NULL CHECK (status IN ('Presente', 'Ausente', 'Justificado', 'Pendiente')),
     justification_reason TEXT,
-    justification_file_name VARCHAR(255),
-    justification_file_type VARCHAR(100),
-    justification_file_content TEXT, -- Base64
+    justification_file JSONB, -- { name: string, type: string, content: string (base64) }
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(student_id, subject_id, date)
