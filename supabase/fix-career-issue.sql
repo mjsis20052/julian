@@ -77,8 +77,7 @@ ORDER BY id;
 UPDATE users 
 SET career_id = 'dev'
 WHERE role = 'Preceptor' 
-  AND (career_id IS NULL OR NOT EXISTS (SELECT 1 FROM careers WHERE id = career_id))
-LIMIT 10; -- Limitar para evitar actualizar todos si hay muchos
+  AND (career_id IS NULL OR NOT EXISTS (SELECT 1 FROM careers WHERE id = career_id));
 
 -- Paso 8: Verificación final
 SELECT '========================================' as "";
